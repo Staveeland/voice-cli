@@ -95,21 +95,15 @@ CONFIG_FILE="$HOME/.voice-cli-key"
 
 # Load API key
 if [ -f "$CONFIG_FILE" ]; then
-    export OPENAI_API_KEY=$(cat "$CONFIG_FILE")
-elif [ -n "$OPENAI_API_KEY" ]; then
-    : # already set
-else
-    echo "🔑 No API key found. Enter your OpenAI API key:"
-    read -rp "   API key: " api_key
-    if [[ -z "$api_key" ]]; then
-        echo "❌ API key required. Get one at: https://platform.openai.com/api-keys"
-        exit 1
+    _key=$(cat "$CONFIG_FILE")
+    if [[ "$_key" == sk-* ]]; then
+        export OPENAI_API_KEY="$_key"
+    else
+        rm -f "$CONFIG_FILE"
     fi
-    echo "$api_key" > "$CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE"
-    export OPENAI_API_KEY="$api_key"
-    echo "✅ Saved for next time."
 fi
+
+# API key will be prompted by main.py if missing/invalid
 
 # Ensure tmux sessions exist
 TMUX_BIN=$(which tmux 2>/dev/null || echo /opt/homebrew/bin/tmux)

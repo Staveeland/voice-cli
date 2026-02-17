@@ -37,19 +37,32 @@ DEFAULT_SESSION = "cli1"
 
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
 if not API_KEY:
-    # Try to read from saved config
     _key_file = Path.home() / ".voice-cli-key"
     if _key_file.exists():
         API_KEY = _key_file.read_text().strip()
-if not API_KEY:
+
+# Validate: must start with sk-
+if not API_KEY or not API_KEY.startswith("sk-"):
+    # Clear invalid saved key
+    _key_file = Path.home() / ".voice-cli-key"
+    if _key_file.exists():
+        _key_file.unlink()
+
     print("🔑 OpenAI API key required (for Whisper speech-to-text)")
     print("   Get one at: https://platform.openai.com/api-keys\n")
-    API_KEY = input("   Paste your API key: ").strip()
-    if not API_KEY:
-        print("❌ No API key provided.")
+
+    # Ensure we have a real TTY for input
+    if not sys.stdin.isatty():
+        print("❌ Cannot prompt for API key (not a terminal).")
+        print("   Run this command first:")
+        print(f'   echo "sk-your-key-here" > ~/.voice-cli-key')
         sys.exit(1)
-    # Save for next time
-    _key_file = Path.home() / ".voice-cli-key"
+
+    API_KEY = input("   Paste your API key: ").strip()
+    if not API_KEY or not API_KEY.startswith("sk-"):
+        print("❌ Invalid API key. Must start with 'sk-'.")
+        sys.exit(1)
+
     _key_file.write_text(API_KEY)
     _key_file.chmod(0o600)
     print("   ✅ Saved to ~/.voice-cli-key\n")
