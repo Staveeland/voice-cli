@@ -273,6 +273,7 @@ class CommandProcessor:
     def __init__(self, tmux: TmuxController, display: Display):
         self.tmux = tmux
         self.display = display
+        self._needs_space = False
 
     def process(self, text: str):
         if not text or text.startswith("[ERROR"):
@@ -285,6 +286,7 @@ class CommandProcessor:
         for pattern, session in SESSION_PATTERNS.items():
             if re.search(pattern, normalized, re.IGNORECASE):
                 if self.tmux.switch(session):
+                    self._needs_space = False
                     self.display.update(
                         active_session=session,
                         status="Switched",
@@ -296,11 +298,15 @@ class CommandProcessor:
         for pattern, key in SPECIAL_COMMANDS.items():
             if re.match(pattern, normalized, re.IGNORECASE):
                 self.tmux.send_special(key)
+                self._needs_space = False  # reset after Enter, Ctrl+C, etc.
                 self.display.update(status="Sent key", last_text=f"⌨ {key}")
                 return
 
-        # Default: type text literally
+        # Default: type text literally (add space between utterances)
+        if self._needs_space:
+            self.tmux.send_keys(" ")
         self.tmux.send_keys(text)
+        self._needs_space = True
         self.display.update(status="Typed", last_text=text)
 
 
