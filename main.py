@@ -324,7 +324,7 @@ def main():
     print("  \033[1;35m     ╚═════╝╚══════╝╚═╝\033[0m")
     print()
     print("  \033[1;37m── Voice-Controlled Terminal Multiplexer ──\033[0m")
-    print("  \033[2mv1.0 · Created by Petter Staveland\033[0m")
+    print("  \033[2mv1.1 · Created by Petter Staveland\033[0m")
     print("  \033[2mhttps://github.com/Staveeland/voice-cli\033[0m")
     print()
     print("  \033[33m🎙  Speak to type  │  \"cli one\"–\"cli five\" to switch\033[0m")
