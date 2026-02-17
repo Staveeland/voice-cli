@@ -7,22 +7,32 @@ Say **"cli one"** to switch sessions, then speak commands — they get typed int
 ## Install (one command)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Staveeland/voice-cli/main/install.sh | bash
+cd ~ && curl -fsSL https://raw.githubusercontent.com/Staveeland/voice-cli/main/install.sh | bash
 ```
 
 This automatically:
 - ✅ Installs all dependencies (Python, tmux, portaudio)
-- ✅ Asks for your OpenAI API key (saved securely for next time)
-- ✅ Opens 5 terminal windows ready to use
-- ✅ Starts listening for voice commands
+- ✅ Creates a virtual environment with Python packages
+- ✅ Installs the `voice-cli` command globally
 
-## Start (after install)
+## Usage
 
 ```bash
 voice-cli
 ```
 
-That's it. 5 terminal windows open, voice control starts.
+On first run it asks for your OpenAI API key (saved for next time).
+
+This will:
+1. Open 5 fresh terminal windows (cli1–cli5)
+2. Start listening for voice commands
+3. Say "cli one" to switch, then speak to type
+
+## Update
+
+```bash
+voice-cli update
+```
 
 ## Voice Commands
 
@@ -53,35 +63,21 @@ Works in both **English** and **Norwegian**.
 
 Everything else is installed automatically.
 
-## Manual Install
-
-If you prefer to set up manually:
+## Uninstall
 
 ```bash
-git clone https://github.com/Staveeland/voice-cli.git
-cd voice-cli
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-brew install tmux portaudio
-.venv/bin/python3 main.py
+rm -rf ~/voice-cli ~/.voice-cli-key
+sudo rm $(which voice-cli)
 ```
-
-## How It Works
-
-1. Listens to your microphone continuously
-2. Detects when you start/stop speaking (energy-based VAD)
-3. Sends audio to OpenAI Whisper for transcription
-4. Matches text against voice commands
-5. Routes commands to the active tmux session
 
 ## Troubleshooting
 
-**"No API key"** — Run `voice-cli` and paste your key when prompted, or:
+**"No API key"** — Run `voice-cli` and paste your key, or set it manually:
 ```bash
 echo "sk-your-key-here" > ~/.voice-cli-key
 ```
 
-**Microphone not working** — macOS may ask for permission. Go to System Settings → Privacy & Security → Microphone → enable Terminal.
+**Microphone not working** — Go to System Settings → Privacy & Security → Microphone → enable Terminal.
 
 **tmux not found** — Run `brew install tmux`
 
