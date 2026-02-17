@@ -93,17 +93,36 @@ sudo tee "$LAUNCHER" > /dev/null << 'LAUNCHER_SCRIPT'
 INSTALL_DIR="$HOME/voice-cli"
 CONFIG_FILE="$HOME/.voice-cli-key"
 
-# Handle update command
+# ─── Handle "voice-cli update" ────────────────────────────────────────────
 if [[ "$1" == "update" ]]; then
     echo "📥 Updating voice-cli..."
     cd "$INSTALL_DIR"
-    git pull --quiet
+    git pull
     "$INSTALL_DIR/.venv/bin/pip" install --quiet --upgrade -r "$INSTALL_DIR/requirements.txt"
-    echo "✅ Updated!"
+    echo "✅ Updated! Run 'voice-cli' to start."
     exit 0
 fi
 
-# Load API key
+# ─── Check for updates on startup ────────────────────────────────────────
+cd "$INSTALL_DIR"
+git fetch --quiet origin main 2>/dev/null
+LOCAL=$(git rev-parse HEAD 2>/dev/null)
+REMOTE=$(git rev-parse origin/main 2>/dev/null)
+if [[ "$LOCAL" != "$REMOTE" && -n "$REMOTE" ]]; then
+    echo ""
+    echo "🆕 Update available!"
+    read -rp "   Install update now? [Y/n] " answer
+    if [[ "$answer" != "n" && "$answer" != "N" ]]; then
+        git pull --quiet
+        "$INSTALL_DIR/.venv/bin/pip" install --quiet --upgrade -r "$INSTALL_DIR/requirements.txt"
+        echo "✅ Updated!"
+    else
+        echo "   Skipped. Run 'voice-cli update' anytime."
+    fi
+    echo ""
+fi
+
+# ─── Load API key ─────────────────────────────────────────────────────────
 if [ -f "$CONFIG_FILE" ]; then
     _key=$(cat "$CONFIG_FILE")
     if [[ "$_key" == sk-* ]]; then
@@ -113,19 +132,7 @@ if [ -f "$CONFIG_FILE" ]; then
     fi
 fi
 
-# API key will be prompted by main.py if missing/invalid
-
-# Check for update flag
-if [[ "$1" == "update" ]]; then
-    echo "📥 Updating voice-cli..."
-    cd "$INSTALL_DIR"
-    git pull --quiet
-    "$INSTALL_DIR/.venv/bin/pip" install --quiet --upgrade -r "$INSTALL_DIR/requirements.txt"
-    echo "✅ Updated!"
-    exit 0
-fi
-
-# Kill old tmux sessions and create fresh ones
+# ─── Fresh tmux sessions ─────────────────────────────────────────────────
 TMUX_BIN=$(which tmux 2>/dev/null || echo /opt/homebrew/bin/tmux)
 for i in 1 2 3 4 5; do
     name="cli${i}"
@@ -133,7 +140,7 @@ for i in 1 2 3 4 5; do
     $TMUX_BIN new-session -d -s "$name" -x 120 -y 30
 done
 
-# Open Terminal windows for each session
+# ─── Open Terminal windows ───────────────────────────────────────────────
 osascript -e '
 tell application "Terminal"
     activate
@@ -148,7 +155,7 @@ end tell
 echo "🖥  Opening 5 terminal windows..."
 sleep 1
 
-# Start voice CLI
+# ─── Start voice CLI ─────────────────────────────────────────────────────
 exec "$INSTALL_DIR/.venv/bin/python3" "$INSTALL_DIR/main.py"
 LAUNCHER_SCRIPT
 
