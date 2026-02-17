@@ -15,14 +15,16 @@ Control multiple tmux CLI sessions with your voice — no keyboard needed.
 One command install (clone + dependencies + guided setup):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Staveeland/voice-cli/main/install.sh | bash
+bash -lc 'set -euo pipefail; if ! command -v brew >/dev/null 2>&1; then NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; fi; if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)"; elif [ -x /usr/local/bin/brew ]; then eval "$(/usr/local/bin/brew shellenv)"; fi; command -v git >/dev/null 2>&1 || brew install git; if [ -d "$HOME/.voice-cli/.git" ]; then git -C "$HOME/.voice-cli" fetch origin && git -C "$HOME/.voice-cli" checkout main && git -C "$HOME/.voice-cli" pull --ff-only origin main; else git clone --branch main https://github.com/Staveeland/voice-cli.git "$HOME/.voice-cli"; fi; cd "$HOME/.voice-cli" && ./install.sh'
 ```
 
 Non-interactive variant:
 
 ```bash
-OPENAI_API_KEY=sk-... curl -fsSL https://raw.githubusercontent.com/Staveeland/voice-cli/main/install.sh | bash
+OPENAI_API_KEY=sk-... bash -lc 'set -euo pipefail; if ! command -v brew >/dev/null 2>&1; then NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"; fi; if [ -x /opt/homebrew/bin/brew ]; then eval "$(/opt/homebrew/bin/brew shellenv)"; elif [ -x /usr/local/bin/brew ]; then eval "$(/usr/local/bin/brew shellenv)"; fi; command -v git >/dev/null 2>&1 || brew install git; if [ -d "$HOME/.voice-cli/.git" ]; then git -C "$HOME/.voice-cli" fetch origin && git -C "$HOME/.voice-cli" checkout main && git -C "$HOME/.voice-cli" pull --ff-only origin main; else git clone --branch main https://github.com/Staveeland/voice-cli.git "$HOME/.voice-cli"; fi; cd "$HOME/.voice-cli" && ./install.sh'
 ```
+
+If the repo is private, GitHub will ask for auth during `git clone`.
 
 Then run:
 
