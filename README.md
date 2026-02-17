@@ -13,16 +13,19 @@ Control multiple tmux CLI sessions with your voice — no keyboard needed.
 ## Quick Start
 
 ```bash
-# 1. Install dependencies
-chmod +x setup.sh tmux-setup.sh
-./setup.sh
+# 1. Run interactive setup (installs deps + asks for OPENAI_API_KEY)
+python3 main.py setup
 
-# 2. Create tmux sessions
-./tmux-setup.sh
-
-# 3. Run
+# 2. Run voice CLI
 python3 main.py
 ```
+
+The setup command guides you through:
+
+- Python dependency installation
+- `tmux` + `portaudio` checks (and optional Homebrew install)
+- API key entry (saved to `.env` as `OPENAI_API_KEY`)
+- Optional `cli1`-`cli5` tmux session creation
 
 ## Voice Commands
 
@@ -46,7 +49,9 @@ python3 main.py
 
 ## Environment
 
-Set `OPENAI_API_KEY` to override the built-in key:
+`python3 main.py setup` will ask for your API key and save it to `.env`.
+
+You can also set `OPENAI_API_KEY` manually:
 
 ```bash
 export OPENAI_API_KEY=sk-...

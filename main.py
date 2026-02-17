@@ -1,22 +1,42 @@
 #!/usr/bin/env python3
 """Voice-controlled CLI multiplexer for macOS using tmux + OpenAI Whisper."""
 
+from __future__ import annotations
+
+import argparse
+import getpass
 import io
+import json
 import os
 import re
-import sys
-import time
-import wave
-import struct
+import shutil
 import signal
 import subprocess
+import sys
 import threading
-from collections import deque
+import time
+import wave
 from pathlib import Path
 
-import numpy as np
-import sounddevice as sd
-from openai import OpenAI
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -35,20 +55,97 @@ MAX_RECORD_SECONDS = 15       # max single utterance
 SESSIONS = [f"cli{i}" for i in range(1, 6)]
 DEFAULT_SESSION = "cli1"
 
-API_KEY = os.environ.get("OPENAI_API_KEY", "")
-if not API_KEY:
-    # Try to read from openclaw config
-    _cfg_path = Path.home() / ".openclaw" / "openclaw.json"
-    if _cfg_path.exists():
-        import json
+
+def project_root() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def resolve_api_key() -> str:
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if api_key:
+        return api_key
+
+    cfg_path = Path.home() / ".openclaw" / "openclaw.json"
+    if cfg_path.exists():
         try:
-            _cfg = json.loads(_cfg_path.read_text())
-            API_KEY = _cfg.get("messages", {}).get("tts", {}).get("openai", {}).get("apiKey", "")
+            cfg = json.loads(cfg_path.read_text())
+            return cfg.get("messages", {}).get("tts", {}).get("openai", {}).get("apiKey", "").strip()
         except Exception:
-            pass
-    if not API_KEY:
-        print("❌ Set OPENAI_API_KEY or configure ~/.openclaw/openclaw.json")
-        sys.exit(1)
+            return ""
+
+    return ""
+
+
+def ensure_runtime_dependencies() -> bool:
+    missing = []
+    if np is None:
+        missing.append("numpy")
+    if sd is None:
+        missing.append("sounddevice")
+    if load_dotenv is None:
+        missing.append("python-dotenv")
+    if OpenAI is None:
+        missing.append("openai")
+
+    if not missing:
+        return True
+
+    print(f"❌ Missing dependencies: {', '.join(missing)}")
+    print("Run `python3 main.py setup` to install everything.")
+    return False
+
+
+def read_env_var(env_path: Path, key: str) -> str:
+    if not env_path.exists():
+        return ""
+
+    for line in env_path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        var_name, value = stripped.split("=", 1)
+        if var_name.strip() == key:
+            value = value.strip().strip("'").strip('"')
+            return value
+    return ""
+
+
+def upsert_env_var(env_path: Path, key: str, value: str):
+    lines = env_path.read_text().splitlines() if env_path.exists() else []
+    updated = False
+
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(f"{key}="):
+            lines[idx] = f"{key}={value}"
+            updated = True
+            break
+
+    if not updated:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(f"{key}={value}")
+
+    env_path.write_text("\n".join(lines) + "\n")
+
+
+def prompt_yes_no(prompt: str, default: bool = True) -> bool:
+    suffix = "[Y/n]" if default else "[y/N]"
+    while True:
+        raw = input(f"{prompt} {suffix}: ").strip().lower()
+        if not raw:
+            return default
+        if raw in {"y", "yes"}:
+            return True
+        if raw in {"n", "no"}:
+            return False
+        print("Please answer y or n.")
+
+
+def mask_secret(secret: str) -> str:
+    if len(secret) <= 10:
+        return "*" * len(secret)
+    return f"{secret[:6]}...{secret[-4:]}"
 
 # ─── Command patterns ─────────────────────────────────────────────────────────
 
@@ -191,6 +288,8 @@ class AudioRecorder:
 
 class Transcriber:
     def __init__(self, api_key: str):
+        if OpenAI is None:
+            raise RuntimeError("openai dependency is missing")
         self.client = OpenAI(api_key=api_key)
 
     def transcribe(self, audio: np.ndarray) -> str:
@@ -288,9 +387,112 @@ class CommandProcessor:
         self.display.update(status="Typed", last_text=text)
 
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+# ─── CLI / Main ───────────────────────────────────────────────────────────────
 
-def main():
+def run_setup() -> int:
+    root = project_root()
+    requirements_path = root / "requirements.txt"
+    tmux_setup_script = root / "tmux-setup.sh"
+    env_path = root / ".env"
+
+    print("=== Voice CLI Interactive Setup ===")
+    print(f"Project: {root}")
+    print()
+
+    if sys.version_info < (3, 10):
+        print(f"❌ Python 3.10+ is required. Current version: {sys.version.split()[0]}")
+        return 1
+    print(f"✅ Python version: {sys.version.split()[0]}")
+
+    if prompt_yes_no("Install Python dependencies from requirements.txt?", default=True):
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", str(requirements_path)]
+        )
+        if result.returncode != 0:
+            print("❌ Failed to install Python dependencies.")
+            return 1
+        print("✅ Python dependencies installed.")
+
+    brew_path = shutil.which("brew")
+    tmux_path = shutil.which("tmux")
+    if tmux_path:
+        print(f"✅ tmux found: {tmux_path}")
+    else:
+        print("⚠ tmux not found.")
+        if brew_path and prompt_yes_no("Install tmux with Homebrew now?", default=True):
+            install_tmux = subprocess.run(["brew", "install", "tmux"])
+            if install_tmux.returncode == 0:
+                print("✅ tmux installed.")
+            else:
+                print("❌ tmux installation failed.")
+        else:
+            print("Install tmux manually: brew install tmux")
+
+    if brew_path:
+        portaudio_installed = (
+            subprocess.run(
+                ["brew", "list", "portaudio"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode == 0
+        )
+        if portaudio_installed:
+            print("✅ portaudio already installed.")
+        elif prompt_yes_no("Install portaudio with Homebrew now?", default=True):
+            install_portaudio = subprocess.run(["brew", "install", "portaudio"])
+            if install_portaudio.returncode == 0:
+                print("✅ portaudio installed.")
+            else:
+                print("❌ portaudio installation failed.")
+        else:
+            print("Install portaudio manually: brew install portaudio")
+    else:
+        print("⚠ Homebrew not found. Install portaudio manually.")
+
+    env_key = read_env_var(env_path, "OPENAI_API_KEY")
+    shell_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    existing_key = shell_key or env_key
+    if existing_key:
+        print(f"Current OPENAI_API_KEY: {mask_secret(existing_key)}")
+
+    while True:
+        api_key = getpass.getpass("Enter your OPENAI_API_KEY (input hidden): ").strip()
+        if not api_key:
+            print("OPENAI_API_KEY cannot be empty.")
+            continue
+        if not api_key.startswith("sk-"):
+            if not prompt_yes_no(
+                "Key does not start with 'sk-'. Save it anyway?",
+                default=False,
+            ):
+                continue
+        upsert_env_var(env_path, "OPENAI_API_KEY", api_key)
+        print(f"✅ Saved OPENAI_API_KEY to {env_path}")
+        break
+
+    if tmux_setup_script.exists() and prompt_yes_no(
+        "Create tmux sessions (cli1-cli5) now?", default=True
+    ):
+        setup_tmux = subprocess.run(["bash", str(tmux_setup_script)])
+        if setup_tmux.returncode != 0:
+            print("❌ Failed to create tmux sessions.")
+            return 1
+
+    print("\nSetup complete.")
+    print("Run `python3 main.py` to start the voice CLI.")
+    return 0
+
+
+def run_voice_cli() -> int:
+    if not ensure_runtime_dependencies():
+        return 1
+
+    load_dotenv()
+    api_key = resolve_api_key()
+    if not api_key:
+        print("❌ Set OPENAI_API_KEY first. Run `python3 main.py setup`.")
+        return 1
+
     print("\033[2J\033[H")  # clear screen
     print("╔══════════════════════════════════════════════╗")
     print("║     🎙  Voice CLI Multiplexer v1.0          ║")
@@ -302,7 +504,7 @@ def main():
     display = Display()
     tmux = TmuxController()
     tmux.ensure_sessions()
-    transcriber = Transcriber(API_KEY)
+    transcriber = Transcriber(api_key)
     processor = CommandProcessor(tmux, display)
     vad = EnergyVAD()
 
@@ -333,7 +535,29 @@ def main():
             time.sleep(0.5)
     except KeyboardInterrupt:
         shutdown(None, None)
+    return 0
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(
+        description="Voice-controlled tmux CLI"
+    )
+    parser.add_argument(
+        "command",
+        nargs="?",
+        choices=["run", "setup"],
+        default="run",
+        help="Use 'setup' for guided installation and API key setup.",
+    )
+    return parser.parse_args(argv)
+
+
+def main():
+    args = parse_args(sys.argv[1:])
+    if args.command == "setup":
+        return run_setup()
+    return run_voice_cli()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
