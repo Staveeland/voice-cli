@@ -105,13 +105,12 @@ fi
 
 # API key will be prompted by main.py if missing/invalid
 
-# Ensure tmux sessions exist
+# Kill old tmux sessions and create fresh ones
 TMUX_BIN=$(which tmux 2>/dev/null || echo /opt/homebrew/bin/tmux)
 for i in 1 2 3 4 5; do
     name="cli${i}"
-    if ! $TMUX_BIN has-session -t "$name" 2>/dev/null; then
-        $TMUX_BIN new-session -d -s "$name" -x 120 -y 30
-    fi
+    $TMUX_BIN kill-session -t "$name" 2>/dev/null
+    $TMUX_BIN new-session -d -s "$name" -x 120 -y 30
 done
 
 # Open Terminal windows for each session
