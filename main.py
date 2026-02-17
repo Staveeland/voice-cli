@@ -32,8 +32,19 @@ SILENCE_FRAMES = 30           # ~900ms of silence to end utterance
 MIN_SPEECH_FRAMES = 5         # minimum frames to count as speech (~150ms)
 MAX_RECORD_SECONDS = 15       # max single utterance
 
-SESSIONS = [f"cli{i}" for i in range(1, 6)]
-DEFAULT_SESSION = "cli1"
+# Auto-detect cli sessions from tmux
+def _detect_sessions():
+    try:
+        r = subprocess.run(["tmux", "list-sessions", "-F", "#{session_name}"],
+                           capture_output=True, text=True)
+        sessions = sorted([s for s in r.stdout.strip().split("\n") if s.startswith("cli")])
+        return sessions if sessions else [f"cli{i}" for i in range(1, 6)]
+    except Exception:
+        return [f"cli{i}" for i in range(1, 6)]
+
+SESSIONS = _detect_sessions()
+DEFAULT_SESSION = SESSIONS[0] if SESSIONS else "cli1"
+MAX_SESSION = 20
 
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
 if not API_KEY:
@@ -76,6 +87,21 @@ SESSION_PATTERNS = {
     r"\bcli\s*(three|3|tre)\b": "cli3",
     r"\bcli\s*(four|4|fire)\b": "cli4",
     r"\bcli\s*(five|5|fem)\b": "cli5",
+    r"\bcli\s*(six|6|seks)\b": "cli6",
+    r"\bcli\s*(seven|7|sju|syv)\b": "cli7",
+    r"\bcli\s*(eight|8|åtte)\b": "cli8",
+    r"\bcli\s*(nine|9|ni)\b": "cli9",
+    r"\bcli\s*(ten|10|ti)\b": "cli10",
+    r"\bcli\s*(eleven|11|elleve)\b": "cli11",
+    r"\bcli\s*(twelve|12|tolv)\b": "cli12",
+    r"\bcli\s*(thirteen|13|tretten)\b": "cli13",
+    r"\bcli\s*(fourteen|14|fjorten)\b": "cli14",
+    r"\bcli\s*(fifteen|15|femten)\b": "cli15",
+    r"\bcli\s*(sixteen|16|seksten)\b": "cli16",
+    r"\bcli\s*(seventeen|17|sytten)\b": "cli17",
+    r"\bcli\s*(eighteen|18|atten)\b": "cli18",
+    r"\bcli\s*(nineteen|19|nitten)\b": "cli19",
+    r"\bcli\s*(twenty|20|tjue)\b": "cli20",
 }
 
 # Special commands → tmux keys

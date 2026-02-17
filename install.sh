@@ -132,27 +132,38 @@ if [ -f "$CONFIG_FILE" ]; then
     fi
 fi
 
+# ─── Ask how many terminals ───────────────────────────────────────────────
+read -rp "🖥  How many terminals? [1-20, default 5]: " num_sessions
+num_sessions=${num_sessions:-5}
+# Validate
+if ! [[ "$num_sessions" =~ ^[0-9]+$ ]] || [ "$num_sessions" -lt 1 ] || [ "$num_sessions" -gt 20 ]; then
+    echo "⚠️  Invalid number, using 5"
+    num_sessions=5
+fi
+
 # ─── Fresh tmux sessions ─────────────────────────────────────────────────
 TMUX_BIN=$(which tmux 2>/dev/null || echo /opt/homebrew/bin/tmux)
-for i in 1 2 3 4 5; do
-    name="cli${i}"
-    $TMUX_BIN kill-session -t "$name" 2>/dev/null
-    $TMUX_BIN new-session -d -s "$name" -x 120 -y 30
+# Kill old sessions (up to 20)
+for i in $(seq 1 20); do
+    $TMUX_BIN kill-session -t "cli${i}" 2>/dev/null
+done
+for i in $(seq 1 "$num_sessions"); do
+    $TMUX_BIN new-session -d -s "cli${i}" -x 120 -y 30
 done
 
 # ─── Open Terminal windows ───────────────────────────────────────────────
-osascript -e '
-tell application "Terminal"
+osascript -e "
+tell application \"Terminal\"
     activate
-    repeat with i from 5 to 1 by -1
-        set sess to "cli" & i
-        do script "tmux attach -t " & sess
+    repeat with i from $num_sessions to 1 by -1
+        set sess to \"cli\" & i
+        do script \"tmux attach -t \" & sess
         delay 0.3
     end repeat
 end tell
-' 2>/dev/null &
+" 2>/dev/null &
 
-echo "🖥  Opening 5 terminal windows..."
+echo "🖥  Opening $num_sessions terminal windows..."
 sleep 1
 
 # ─── Start voice CLI ─────────────────────────────────────────────────────
