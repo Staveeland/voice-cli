@@ -93,6 +93,16 @@ sudo tee "$LAUNCHER" > /dev/null << 'LAUNCHER_SCRIPT'
 INSTALL_DIR="$HOME/voice-cli"
 CONFIG_FILE="$HOME/.voice-cli-key"
 
+# Handle update command
+if [[ "$1" == "update" ]]; then
+    echo "📥 Updating voice-cli..."
+    cd "$INSTALL_DIR"
+    git pull --quiet
+    "$INSTALL_DIR/.venv/bin/pip" install --quiet --upgrade -r "$INSTALL_DIR/requirements.txt"
+    echo "✅ Updated!"
+    exit 0
+fi
+
 # Load API key
 if [ -f "$CONFIG_FILE" ]; then
     _key=$(cat "$CONFIG_FILE")
@@ -104,6 +114,16 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 # API key will be prompted by main.py if missing/invalid
+
+# Check for update flag
+if [[ "$1" == "update" ]]; then
+    echo "📥 Updating voice-cli..."
+    cd "$INSTALL_DIR"
+    git pull --quiet
+    "$INSTALL_DIR/.venv/bin/pip" install --quiet --upgrade -r "$INSTALL_DIR/requirements.txt"
+    echo "✅ Updated!"
+    exit 0
+fi
 
 # Kill old tmux sessions and create fresh ones
 TMUX_BIN=$(which tmux 2>/dev/null || echo /opt/homebrew/bin/tmux)
