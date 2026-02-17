@@ -37,6 +37,7 @@ cd ~/.voice-cli && python3 main.py
 - Clones or updates `https://github.com/Staveeland/voice-cli` to `~/.voice-cli`
 - Installs Homebrew if missing
 - Python dependency installation
+- Creates and uses a project virtualenv (`~/.voice-cli/.venv`)
 - Installs `python3` (3.10+), `git`, `tmux`, and `portaudio` if missing
 - Prompts for API key and saves it to `.env`
 - Creates `cli1`-`cli5` tmux sessions

@@ -148,6 +148,43 @@ def mask_secret(secret: str) -> str:
     return f"{secret[:6]}...{secret[-4:]}"
 
 
+def in_virtualenv() -> bool:
+    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+
+
+def project_venv_python(root: Path) -> Path:
+    return root / ".venv" / "bin" / "python"
+
+
+def ensure_project_venv(root: Path) -> str:
+    venv_python = project_venv_python(root)
+    if venv_python.exists():
+        return str(venv_python)
+
+    venv_dir = root / ".venv"
+    print(f"Creating project virtualenv at {venv_dir}...")
+    if subprocess.run([sys.executable, "-m", "venv", str(venv_dir)]).returncode != 0:
+        print("❌ Failed to create project virtualenv.")
+        return ""
+
+    if not venv_python.exists():
+        print("❌ Virtualenv created, but python binary is missing.")
+        return ""
+
+    return str(venv_python)
+
+
+def reexec_with_project_venv_if_available(root: Path) -> None:
+    if in_virtualenv():
+        return
+
+    venv_python = project_venv_python(root)
+    if not venv_python.exists():
+        return
+
+    os.execv(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]])
+
+
 def get_brew_path() -> str:
     brew = shutil.which("brew")
     if brew:
@@ -434,6 +471,7 @@ def run_setup(auto: bool = False, api_key_arg: str = "") -> int:
     requirements_path = root / "requirements.txt"
     tmux_setup_script = root / "tmux-setup.sh"
     env_path = root / ".env"
+    install_python = sys.executable
 
     setup_mode = "Automated" if auto else "Interactive"
     print(f"=== Voice CLI {setup_mode} Setup ===")
@@ -445,13 +483,20 @@ def run_setup(auto: bool = False, api_key_arg: str = "") -> int:
         return 1
     print(f"✅ Python version: {sys.version.split()[0]}")
 
+    if not in_virtualenv():
+        venv_python = ensure_project_venv(root)
+        if not venv_python:
+            return 1
+        install_python = venv_python
+        print(f"✅ Using project virtualenv: {venv_python}")
+
     should_install_python = auto or prompt_yes_no(
         "Install Python dependencies from requirements.txt?",
         default=True,
     )
     if should_install_python:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-r", str(requirements_path)]
+            [install_python, "-m", "pip", "install", "-r", str(requirements_path)]
         )
         if result.returncode != 0:
             print("❌ Failed to install Python dependencies.")
@@ -565,6 +610,9 @@ def run_setup(auto: bool = False, api_key_arg: str = "") -> int:
 
 
 def run_voice_cli() -> int:
+    root = project_root()
+    reexec_with_project_venv_if_available(root)
+
     if not ensure_runtime_dependencies():
         return 1
 
