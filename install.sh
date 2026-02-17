@@ -74,21 +74,12 @@ echo "📦 Installing Python dependencies..."
 echo "✅ Python dependencies installed"
 
 # ─── API key setup ────────────────────────────────────────────────────────
+# Note: API key is prompted on first run of voice-cli (not during install)
+# because curl|bash piping breaks interactive input
 if [ -f "$CONFIG_FILE" ]; then
     echo "✅ API key found at $CONFIG_FILE"
 else
-    echo ""
-    echo "🔑 OpenAI API key required (for Whisper speech-to-text)"
-    echo "   Get one at: https://platform.openai.com/api-keys"
-    echo ""
-    read -rp "   Paste your API key: " api_key
-    if [[ -z "$api_key" ]]; then
-        echo "❌ No API key provided. You can set it later by running voice-cli again."
-    else
-        echo "$api_key" > "$CONFIG_FILE"
-        chmod 600 "$CONFIG_FILE"
-        echo "✅ API key saved to $CONFIG_FILE"
-    fi
+    echo "ℹ️  API key will be requested on first run of voice-cli"
 fi
 
 # ─── Create launcher script ───────────────────────────────────────────────
