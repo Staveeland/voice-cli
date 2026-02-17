@@ -1,68 +1,90 @@
 # Voice CLI Multiplexer 🎙
 
-Control multiple tmux CLI sessions with your voice — no keyboard needed.
+Control 5 terminal sessions with your voice. No keyboard needed.
 
-## Features
+Say **"cli one"** to switch sessions, then speak commands — they get typed into the terminal automatically.
 
-- **5 tmux sessions** (cli1–cli5) controlled entirely by voice
-- **OpenAI Whisper API** for accurate speech-to-text
-- **Supports English and Norwegian** commands
-- **Energy-based VAD** — detects when you start/stop speaking
-- **Visual feedback** — shows active session and transcription status
-
-## Quick Start
+## Install (one command)
 
 ```bash
-# 1. Install dependencies
-chmod +x setup.sh tmux-setup.sh
-./setup.sh
-
-# 2. Create tmux sessions
-./tmux-setup.sh
-
-# 3. Run
-python3 main.py
+curl -fsSL https://raw.githubusercontent.com/Staveeland/voice-cli/main/install.sh | bash
 ```
+
+This automatically:
+- ✅ Installs all dependencies (Python, tmux, portaudio)
+- ✅ Asks for your OpenAI API key (saved securely for next time)
+- ✅ Opens 5 terminal windows ready to use
+- ✅ Starts listening for voice commands
+
+## Start (after install)
+
+```bash
+voice-cli
+```
+
+That's it. 5 terminal windows open, voice control starts.
 
 ## Voice Commands
 
-| Command | Action |
+| Say this | What happens |
 |---|---|
-| "cli one" / "cli en" | Switch to cli1 |
-| "cli two" / "cli to" | Switch to cli2 |
-| "cli three" / "cli tre" | Switch to cli3 |
-| "cli four" / "cli fire" | Switch to cli4 |
-| "cli five" / "cli fem" | Switch to cli5 |
-| "send it" / "enter" | Press Enter |
-| "clear it" / "avbryt" | Ctrl+C |
-| "tab" | Tab key |
-| "up" / "opp" | Arrow up |
-| "down" / "ned" | Arrow down |
-| "escape" | Escape key |
-| "undo" / "angre" | Ctrl+Z |
-| "save" / "lagre" | Ctrl+S |
-| "delete line" | Ctrl+U |
-| anything else | Typed as text |
+| **"cli one"** / "cli en" | Switch to terminal 1 |
+| **"cli two"** / "cli to" | Switch to terminal 2 |
+| **"cli three"** / "cli tre" | Switch to terminal 3 |
+| **"cli four"** / "cli fire" | Switch to terminal 4 |
+| **"cli five"** / "cli fem" | Switch to terminal 5 |
+| **"send it"** / "enter" | Press Enter |
+| **"clear it"** / "avbryt" | Ctrl+C |
+| **"tab"** | Tab (autocomplete) |
+| **"up"** / "opp" | Arrow up (previous command) |
+| **"down"** / "ned" | Arrow down |
+| **"escape"** | Escape key |
+| **"undo"** / "angre" | Ctrl+Z |
+| **"save"** / "lagre" | Ctrl+S |
+| **"delete line"** | Clear current line |
+| Anything else | Gets typed as text |
 
-## Environment
-
-Set `OPENAI_API_KEY` to override the built-in key:
-
-```bash
-export OPENAI_API_KEY=sk-...
-```
+Works in both **English** and **Norwegian**.
 
 ## Requirements
 
-- macOS with microphone access
-- Python 3.10+
-- tmux
-- portaudio (`brew install portaudio`)
+- macOS (for microphone access)
+- OpenAI API key ([get one here](https://platform.openai.com/api-keys))
+
+Everything else is installed automatically.
+
+## Manual Install
+
+If you prefer to set up manually:
+
+```bash
+git clone https://github.com/Staveeland/voice-cli.git
+cd voice-cli
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+brew install tmux portaudio
+.venv/bin/python3 main.py
+```
 
 ## How It Works
 
-1. Continuously listens to microphone via `sounddevice`
-2. Energy-based VAD detects speech start/stop
-3. Audio sent to OpenAI Whisper API for transcription
-4. Text matched against command patterns
-5. Commands routed to active tmux session via `tmux send-keys`
+1. Listens to your microphone continuously
+2. Detects when you start/stop speaking (energy-based VAD)
+3. Sends audio to OpenAI Whisper for transcription
+4. Matches text against voice commands
+5. Routes commands to the active tmux session
+
+## Troubleshooting
+
+**"No API key"** — Run `voice-cli` and paste your key when prompted, or:
+```bash
+echo "sk-your-key-here" > ~/.voice-cli-key
+```
+
+**Microphone not working** — macOS may ask for permission. Go to System Settings → Privacy & Security → Microphone → enable Terminal.
+
+**tmux not found** — Run `brew install tmux`
+
+## License
+
+MIT

@@ -37,18 +37,22 @@ DEFAULT_SESSION = "cli1"
 
 API_KEY = os.environ.get("OPENAI_API_KEY", "")
 if not API_KEY:
-    # Try to read from openclaw config
-    _cfg_path = Path.home() / ".openclaw" / "openclaw.json"
-    if _cfg_path.exists():
-        import json
-        try:
-            _cfg = json.loads(_cfg_path.read_text())
-            API_KEY = _cfg.get("messages", {}).get("tts", {}).get("openai", {}).get("apiKey", "")
-        except Exception:
-            pass
+    # Try to read from saved config
+    _key_file = Path.home() / ".voice-cli-key"
+    if _key_file.exists():
+        API_KEY = _key_file.read_text().strip()
+if not API_KEY:
+    print("🔑 OpenAI API key required (for Whisper speech-to-text)")
+    print("   Get one at: https://platform.openai.com/api-keys\n")
+    API_KEY = input("   Paste your API key: ").strip()
     if not API_KEY:
-        print("❌ Set OPENAI_API_KEY or configure ~/.openclaw/openclaw.json")
+        print("❌ No API key provided.")
         sys.exit(1)
+    # Save for next time
+    _key_file = Path.home() / ".voice-cli-key"
+    _key_file.write_text(API_KEY)
+    _key_file.chmod(0o600)
+    print("   ✅ Saved to ~/.voice-cli-key\n")
 
 # ─── Command patterns ─────────────────────────────────────────────────────────
 
