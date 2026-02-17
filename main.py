@@ -223,9 +223,8 @@ class Transcriber:
 
         try:
             result = self.client.audio.transcriptions.create(
-                model="whisper-1",
+                model="gpt-4o-transcribe",
                 file=buf,
-                language=None,  # auto-detect (supports Norwegian + English)
                 prompt="cli one, cli two, cli three, cli four, cli five, send it, clear it, tab, escape, undo, save, delete line",
             )
             return result.text.strip()
