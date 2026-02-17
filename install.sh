@@ -151,7 +151,5 @@ echo "║  • Say \"cli one\" to switch sessions          ║"
 echo "║                                              ║"
 echo "╚══════════════════════════════════════════════╝"
 echo ""
-read -rp "🎙 Start voice-cli now? [Y/n] " start_now
-if [[ "$start_now" != "n" && "$start_now" != "N" ]]; then
-    exec voice-cli
-fi
+echo "👉 Run 'voice-cli' to start!"
+echo ""
