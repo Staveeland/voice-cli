@@ -144,7 +144,7 @@ done
 osascript -e '
 tell application "Terminal"
     activate
-    repeat with i from 1 to 5
+    repeat with i from 5 to 1 by -1
         set sess to "cli" & i
         do script "tmux attach -t " & sess
         delay 0.3
