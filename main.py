@@ -1,42 +1,22 @@
 #!/usr/bin/env python3
 """Voice-controlled CLI multiplexer for macOS using tmux + OpenAI Whisper."""
 
-from __future__ import annotations
-
-import argparse
-import getpass
 import io
-import json
 import os
 import re
-import shutil
-import signal
-import subprocess
 import sys
-import threading
 import time
 import wave
+import struct
+import signal
+import subprocess
+import threading
+from collections import deque
 from pathlib import Path
 
-try:
-    import numpy as np
-except ImportError:
-    np = None
-
-try:
-    import sounddevice as sd
-except ImportError:
-    sd = None
-
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None
-
-try:
-    from openai import OpenAI
-except ImportError:
-    OpenAI = None
+import numpy as np
+import sounddevice as sd
+from openai import OpenAI
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -55,174 +35,20 @@ MAX_RECORD_SECONDS = 15       # max single utterance
 SESSIONS = [f"cli{i}" for i in range(1, 6)]
 DEFAULT_SESSION = "cli1"
 
-
-def project_root() -> Path:
-    return Path(__file__).resolve().parent
-
-
-def resolve_api_key() -> str:
-    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    if api_key:
-        return api_key
-
-    cfg_path = Path.home() / ".openclaw" / "openclaw.json"
-    if cfg_path.exists():
+API_KEY = os.environ.get("OPENAI_API_KEY", "")
+if not API_KEY:
+    # Try to read from openclaw config
+    _cfg_path = Path.home() / ".openclaw" / "openclaw.json"
+    if _cfg_path.exists():
+        import json
         try:
-            cfg = json.loads(cfg_path.read_text())
-            return cfg.get("messages", {}).get("tts", {}).get("openai", {}).get("apiKey", "").strip()
+            _cfg = json.loads(_cfg_path.read_text())
+            API_KEY = _cfg.get("messages", {}).get("tts", {}).get("openai", {}).get("apiKey", "")
         except Exception:
-            return ""
-
-    return ""
-
-
-def ensure_runtime_dependencies() -> bool:
-    missing = []
-    if np is None:
-        missing.append("numpy")
-    if sd is None:
-        missing.append("sounddevice")
-    if load_dotenv is None:
-        missing.append("python-dotenv")
-    if OpenAI is None:
-        missing.append("openai")
-
-    if not missing:
-        return True
-
-    print(f"❌ Missing dependencies: {', '.join(missing)}")
-    print("Run `python3 main.py setup` to install everything.")
-    return False
-
-
-def read_env_var(env_path: Path, key: str) -> str:
-    if not env_path.exists():
-        return ""
-
-    for line in env_path.read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        var_name, value = stripped.split("=", 1)
-        if var_name.strip() == key:
-            value = value.strip().strip("'").strip('"')
-            return value
-    return ""
-
-
-def upsert_env_var(env_path: Path, key: str, value: str):
-    lines = env_path.read_text().splitlines() if env_path.exists() else []
-    updated = False
-
-    for idx, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith(f"{key}="):
-            lines[idx] = f"{key}={value}"
-            updated = True
-            break
-
-    if not updated:
-        if lines and lines[-1].strip():
-            lines.append("")
-        lines.append(f"{key}={value}")
-
-    env_path.write_text("\n".join(lines) + "\n")
-
-
-def prompt_yes_no(prompt: str, default: bool = True) -> bool:
-    suffix = "[Y/n]" if default else "[y/N]"
-    while True:
-        raw = input(f"{prompt} {suffix}: ").strip().lower()
-        if not raw:
-            return default
-        if raw in {"y", "yes"}:
-            return True
-        if raw in {"n", "no"}:
-            return False
-        print("Please answer y or n.")
-
-
-def mask_secret(secret: str) -> str:
-    if len(secret) <= 10:
-        return "*" * len(secret)
-    return f"{secret[:6]}...{secret[-4:]}"
-
-
-def in_virtualenv() -> bool:
-    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
-
-
-def project_venv_python(root: Path) -> Path:
-    return root / ".venv" / "bin" / "python"
-
-
-def ensure_project_venv(root: Path) -> str:
-    venv_python = project_venv_python(root)
-    if venv_python.exists():
-        return str(venv_python)
-
-    venv_dir = root / ".venv"
-    print(f"Creating project virtualenv at {venv_dir}...")
-    if subprocess.run([sys.executable, "-m", "venv", str(venv_dir)]).returncode != 0:
-        print("❌ Failed to create project virtualenv.")
-        return ""
-
-    if not venv_python.exists():
-        print("❌ Virtualenv created, but python binary is missing.")
-        return ""
-
-    return str(venv_python)
-
-
-def reexec_with_project_venv_if_available(root: Path) -> None:
-    if in_virtualenv():
-        return
-
-    venv_python = project_venv_python(root)
-    if not venv_python.exists():
-        return
-
-    os.execv(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]])
-
-
-def get_brew_path() -> str:
-    brew = shutil.which("brew")
-    if brew:
-        return brew
-
-    for candidate in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew"):
-        if Path(candidate).exists():
-            return candidate
-    return ""
-
-
-def ensure_homebrew(auto_install: bool) -> str:
-    brew = get_brew_path()
-    if brew:
-        return brew
-
-    print("⚠ Homebrew not found.")
-    if not auto_install:
-        return ""
-
-    print("Installing Homebrew...")
-    install_cmd = (
-        'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL '
-        'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-    )
-    if subprocess.run(install_cmd, shell=True).returncode != 0:
-        print("❌ Homebrew installation failed.")
-        return ""
-
-    brew = get_brew_path()
-    if not brew:
-        print("❌ Homebrew installation finished, but brew is still unavailable.")
-        return ""
-
-    # Make newly installed brew available in this process.
-    brew_dir = str(Path(brew).parent)
-    os.environ["PATH"] = f"{brew_dir}:{os.environ.get('PATH', '')}"
-    return brew
+            pass
+    if not API_KEY:
+        print("❌ Set OPENAI_API_KEY or configure ~/.openclaw/openclaw.json")
+        sys.exit(1)
 
 # ─── Command patterns ─────────────────────────────────────────────────────────
 
@@ -237,7 +63,7 @@ SESSION_PATTERNS = {
 
 # Special commands → tmux keys
 SPECIAL_COMMANDS = {
-    r"^(execute|exectute|kjør)$": "Enter",
+    r"^(send it|enter|kjør|send|trykk enter)$": "Enter",
     r"^(clear it|clear|avbryt|stopp)$": "C-c",
     r"^(tab|tabb)$": "Tab",
     r"^(up|opp|pil opp)$": "Up",
@@ -365,8 +191,6 @@ class AudioRecorder:
 
 class Transcriber:
     def __init__(self, api_key: str):
-        if OpenAI is None:
-            raise RuntimeError("openai dependency is missing")
         self.client = OpenAI(api_key=api_key)
 
     def transcribe(self, audio: np.ndarray) -> str:
@@ -385,7 +209,7 @@ class Transcriber:
                 model="whisper-1",
                 file=buf,
                 language=None,  # auto-detect (supports Norwegian + English)
-                prompt="cli one, cli two, cli three, cli four, cli five, execute, clear it, tab, escape, undo, save, delete line",
+                prompt="cli one, cli two, cli three, cli four, cli five, send it, clear it, tab, escape, undo, save, delete line",
             )
             return result.text.strip()
         except Exception as e:
@@ -464,164 +288,9 @@ class CommandProcessor:
         self.display.update(status="Typed", last_text=text)
 
 
-# ─── CLI / Main ───────────────────────────────────────────────────────────────
+# ─── Main ─────────────────────────────────────────────────────────────────────
 
-def run_setup(auto: bool = False, api_key_arg: str = "") -> int:
-    root = project_root()
-    requirements_path = root / "requirements.txt"
-    tmux_setup_script = root / "tmux-setup.sh"
-    env_path = root / ".env"
-    install_python = sys.executable
-
-    setup_mode = "Automated" if auto else "Interactive"
-    print(f"=== Voice CLI {setup_mode} Setup ===")
-    print(f"Project: {root}")
-    print()
-
-    if sys.version_info < (3, 10):
-        print(f"❌ Python 3.10+ is required. Current version: {sys.version.split()[0]}")
-        return 1
-    print(f"✅ Python version: {sys.version.split()[0]}")
-
-    if not in_virtualenv():
-        venv_python = ensure_project_venv(root)
-        if not venv_python:
-            return 1
-        install_python = venv_python
-        print(f"✅ Using project virtualenv: {venv_python}")
-
-    should_install_python = auto or prompt_yes_no(
-        "Install Python dependencies from requirements.txt?",
-        default=True,
-    )
-    if should_install_python:
-        result = subprocess.run(
-            [install_python, "-m", "pip", "install", "-r", str(requirements_path)]
-        )
-        if result.returncode != 0:
-            print("❌ Failed to install Python dependencies.")
-            return 1
-        print("✅ Python dependencies installed.")
-    elif auto:
-        print("❌ Auto setup requires dependency installation.")
-        return 1
-
-    brew_path = ensure_homebrew(auto_install=auto)
-    tmux_path = shutil.which("tmux")
-    if tmux_path:
-        print(f"✅ tmux found: {tmux_path}")
-    else:
-        print("⚠ tmux not found.")
-        should_install_tmux = auto or (
-            brew_path and prompt_yes_no("Install tmux with Homebrew now?", default=True)
-        )
-        if brew_path and should_install_tmux:
-            install_tmux = subprocess.run([brew_path, "install", "tmux"])
-            if install_tmux.returncode == 0:
-                print("✅ tmux installed.")
-            else:
-                print("❌ tmux installation failed.")
-                if auto:
-                    return 1
-        elif auto:
-            print("❌ Auto setup could not install tmux because Homebrew is unavailable.")
-            return 1
-        else:
-            print("Install tmux manually: brew install tmux")
-
-    if brew_path:
-        portaudio_installed = (
-            subprocess.run(
-                [brew_path, "list", "portaudio"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            ).returncode == 0
-        )
-        if portaudio_installed:
-            print("✅ portaudio already installed.")
-        elif auto or prompt_yes_no("Install portaudio with Homebrew now?", default=True):
-            install_portaudio = subprocess.run([brew_path, "install", "portaudio"])
-            if install_portaudio.returncode == 0:
-                print("✅ portaudio installed.")
-            else:
-                print("❌ portaudio installation failed.")
-                if auto:
-                    return 1
-        elif auto:
-            print("❌ Auto setup requires portaudio.")
-            return 1
-        else:
-            print("Install portaudio manually: brew install portaudio")
-    else:
-        print("❌ Homebrew is required to install portaudio.")
-        return 1
-
-    env_key = read_env_var(env_path, "OPENAI_API_KEY").strip()
-    shell_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    arg_key = api_key_arg.strip()
-    selected_key = arg_key or shell_key or env_key
-
-    if selected_key:
-        print(f"Using OPENAI_API_KEY: {mask_secret(selected_key)}")
-        if selected_key != env_key:
-            upsert_env_var(env_path, "OPENAI_API_KEY", selected_key)
-            print(f"✅ Saved OPENAI_API_KEY to {env_path}")
-    else:
-        if auto and not sys.stdin.isatty():
-            print("❌ OPENAI_API_KEY is required for auto setup.")
-            print("Set OPENAI_API_KEY before running setup.")
-            return 1
-
-        while True:
-            api_key = getpass.getpass("Enter your OPENAI_API_KEY (input hidden): ").strip()
-            if not api_key:
-                print("OPENAI_API_KEY cannot be empty.")
-                continue
-            if not api_key.startswith("sk-"):
-                if not prompt_yes_no(
-                    "Key does not start with 'sk-'. Save it anyway?",
-                    default=False,
-                ):
-                    continue
-            upsert_env_var(env_path, "OPENAI_API_KEY", api_key)
-            print(f"✅ Saved OPENAI_API_KEY to {env_path}")
-            selected_key = api_key
-            break
-
-    should_create_sessions = auto or (
-        tmux_setup_script.exists()
-        and prompt_yes_no("Create tmux sessions (cli1-cli5) now?", default=True)
-    )
-    if tmux_setup_script.exists() and should_create_sessions:
-        setup_tmux = subprocess.run(["bash", str(tmux_setup_script)])
-        if setup_tmux.returncode != 0:
-            print("❌ Failed to create tmux sessions.")
-            return 1
-    elif auto:
-        print("❌ tmux setup script is missing.")
-        return 1
-
-    if selected_key and not selected_key.startswith("sk-"):
-        print("⚠ OPENAI_API_KEY was saved, but format is unusual.")
-
-    print("\nSetup complete.")
-    print("Run `python3 main.py` to start the voice CLI.")
-    return 0
-
-
-def run_voice_cli() -> int:
-    root = project_root()
-    reexec_with_project_venv_if_available(root)
-
-    if not ensure_runtime_dependencies():
-        return 1
-
-    load_dotenv()
-    api_key = resolve_api_key()
-    if not api_key:
-        print("❌ Set OPENAI_API_KEY first. Run `python3 main.py setup`.")
-        return 1
-
+def main():
     print("\033[2J\033[H")  # clear screen
     print("╔══════════════════════════════════════════════╗")
     print("║     🎙  Voice CLI Multiplexer v1.0          ║")
@@ -633,7 +302,7 @@ def run_voice_cli() -> int:
     display = Display()
     tmux = TmuxController()
     tmux.ensure_sessions()
-    transcriber = Transcriber(api_key)
+    transcriber = Transcriber(API_KEY)
     processor = CommandProcessor(tmux, display)
     vad = EnergyVAD()
 
@@ -664,39 +333,7 @@ def run_voice_cli() -> int:
             time.sleep(0.5)
     except KeyboardInterrupt:
         shutdown(None, None)
-    return 0
-
-
-def parse_args(argv):
-    parser = argparse.ArgumentParser(description="Voice-controlled tmux CLI")
-    subparsers = parser.add_subparsers(dest="command")
-
-    subparsers.add_parser("run", help="Run the voice CLI.")
-
-    setup_parser = subparsers.add_parser(
-        "setup",
-        help="Run guided installation and API key setup.",
-    )
-    setup_parser.add_argument(
-        "--auto",
-        action="store_true",
-        help="Install dependencies automatically without yes/no prompts.",
-    )
-    setup_parser.add_argument(
-        "--api-key",
-        default="",
-        help="OPENAI_API_KEY value to save in .env during setup.",
-    )
-
-    return parser.parse_args(argv)
-
-
-def main():
-    args = parse_args(sys.argv[1:])
-    if args.command == "setup":
-        return run_setup(auto=args.auto, api_key_arg=args.api_key)
-    return run_voice_cli()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
