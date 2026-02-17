@@ -160,7 +160,7 @@ SESSION_PATTERNS = {
 
 # Special commands → tmux keys
 SPECIAL_COMMANDS = {
-    r"^(send it|enter|kjør|send|trykk enter)$": "Enter",
+    r"^(execute|exectute|kjør)$": "Enter",
     r"^(clear it|clear|avbryt|stopp)$": "C-c",
     r"^(tab|tabb)$": "Tab",
     r"^(up|opp|pil opp)$": "Up",
@@ -308,7 +308,7 @@ class Transcriber:
                 model="whisper-1",
                 file=buf,
                 language=None,  # auto-detect (supports Norwegian + English)
-                prompt="cli one, cli two, cli three, cli four, cli five, send it, clear it, tab, escape, undo, save, delete line",
+                prompt="cli one, cli two, cli three, cli four, cli five, execute, clear it, tab, escape, undo, save, delete line",
             )
             return result.text.strip()
         except Exception as e:
